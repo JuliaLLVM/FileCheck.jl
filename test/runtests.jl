@@ -140,4 +140,26 @@ end
     end
 end
 
+@testset "standard output" begin
+    @test @filecheck begin
+        @check "stdout"
+        println("stdout")
+
+        @check "stderr"
+        println(stderr, "stderr")
+
+        @check_not "bad"
+
+        @check "result"
+        "result"
+    end
+end
+
+@testset "errors" begin
+    @test_throws ErrorException("TestError") @filecheck begin
+        @check_not "TestError"
+        error("TestError")
+    end
+end
+
 end  # @testset "FileCheck"

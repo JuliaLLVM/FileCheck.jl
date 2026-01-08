@@ -30,10 +30,25 @@ function filecheck(f, input)
         write(input_io, input)
         close(input_io)
 
-        # get the output of `f` and print it into a temporary buffer
-        output_io = IOBuffer()
-        print(output_io, f(input))
-        println(output_io)
+        # call the function while capturing the output and result
+        pipe = Pipe()
+        pipe_initialized = Channel{Nothing}(1)
+        reader = @async begin
+            take!(pipe_initialized)
+            read(pipe, String)
+        end
+        result = nothing
+        io = IOContext(pipe)
+        stats = redirect_stdio(; stdout=io, stderr=io) do
+            put!(pipe_initialized, nothing)
+            result = f(input)
+        end
+        if result !== nothing
+          println(io)
+          print(io, result)
+        end
+        close(pipe.in)
+        output = fetch(reader)
 
         # determine some useful prefixes for FileCheck
         prefixes = ["CHECK",
@@ -42,14 +57,13 @@ function filecheck(f, input)
         # TODO: add CUDA version prefix and target architecture?
 
         # now pass the collected output to FileCheck
-        seekstart(output_io)
         filecheck_io = Pipe()
         cmd = ```$(filecheck_exe())
                  --color
                  --allow-unused-prefixes
                  --check-prefixes $(join(prefixes, ','))
                  $path```
-        proc = run(pipeline(ignorestatus(cmd); stdin=output_io, stdout=filecheck_io, stderr=filecheck_io); wait=false)
+        proc = run(pipeline(ignorestatus(cmd); stdin=IOBuffer(output), stdout=filecheck_io, stderr=filecheck_io); wait=false)
         close(filecheck_io.in)
 
         # collect the output of FileCheck
