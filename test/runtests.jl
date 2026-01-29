@@ -236,4 +236,100 @@ end
     end
 end
 
+@testset "match_full_lines" begin
+    @test @filecheck match_full_lines=true begin
+        @check "hello world"
+        "hello world"
+    end
+
+    @test_throws ErrorException @filecheck match_full_lines=true begin
+        @check "hello"
+        "hello world"
+    end
+end
+
+@testset "strict_whitespace" begin
+    @test @filecheck strict_whitespace=true begin
+        @check "hello  world"
+        "hello  world"
+    end
+end
+
+@testset "ignore_case" begin
+    @test @filecheck ignore_case=true begin
+        @check "hello"
+        "HELLO"
+    end
+end
+
+@testset "verbose" begin
+    @test @filecheck verbose=true begin
+        @check "hello"
+        "hello world"
+    end
+end
+
+@testset "enable_var_scope" begin
+    @test @filecheck enable_var_scope=true begin
+        @check_label "section1"
+        @check "value = {{[0-9]+}}"
+        @check_label "section2"
+        @check "value = {{[0-9]+}}"
+        """
+        section1:
+          value = 42
+        section2:
+          value = 99
+        """
+    end
+end
+
+@testset "defines" begin
+    @test @filecheck defines=Dict("VAR"=>"42") begin
+        @check "value = [[VAR]]"
+        "value = 42"
+    end
+end
+
+@testset "allow_empty" begin
+    @test @filecheck allow_empty=true begin
+        @check_not "error"
+        ""
+    end
+end
+
+@testset "implicit_check_not" begin
+    @test @filecheck implicit_check_not="error" begin
+        @check "hello"
+        "hello world"
+    end
+
+    @test_throws ErrorException @filecheck implicit_check_not="world" begin
+        @check "hello"
+        "hello world"
+    end
+
+    # vector form
+    @test @filecheck implicit_check_not=["error", "warning"] begin
+        @check "hello"
+        "hello world"
+    end
+end
+
+@testset "literal" begin
+    @test @filecheck begin
+        @check literal=true "{{not a regex}}"
+        "{{not a regex}}"
+    end
+
+    @test @filecheck begin
+        @check "first"
+        @check_next literal=true "[[not a var]]"
+        """
+        first
+        [[not a var]]
+        """
+    end
+end
+
 end  # @testset "FileCheck"

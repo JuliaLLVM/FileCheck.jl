@@ -24,7 +24,19 @@ function filecheck_exe(; adjust_PATH::Bool=true, adjust_LIBPATH::Bool=true)
     return Cmd(Cmd([filecheck_path]); env)
 end
 
-function filecheck(f, input)
+function filecheck(f, input;
+    match_full_lines::Bool=false,
+    strict_whitespace::Bool=false,
+    ignore_case::Bool=false,
+    implicit_check_not::Union{Nothing,String,Vector{String}}=nothing,
+    enable_var_scope::Bool=false,
+    dump_input::Union{Nothing,String}=nothing,
+    verbose::Bool=false,
+    very_verbose::Bool=false,
+    check_prefixes::Union{Nothing,Vector{String}}=nothing,
+    defines::Union{Nothing,Dict{String,String}}=nothing,
+    allow_empty::Bool=false,
+)
     # FileCheck assumes that the input is available as a file
     mktemp() do path, input_io
         write(input_io, input)
@@ -53,6 +65,27 @@ function filecheck(f, input)
         # now pass the collected output to FileCheck
         filecheck_io = Pipe()
         cmd = `$(filecheck_exe()) --color $path`
+        match_full_lines && (cmd = `$cmd --match-full-lines`)
+        strict_whitespace && (cmd = `$cmd --strict-whitespace`)
+        ignore_case && (cmd = `$cmd --ignore-case`)
+        verbose && (cmd = `$cmd -v`)
+        very_verbose && (cmd = `$cmd -vv`)
+        enable_var_scope && (cmd = `$cmd --enable-var-scope`)
+        allow_empty && (cmd = `$cmd --allow-empty`)
+        dump_input !== nothing && (cmd = `$cmd --dump-input=$dump_input`)
+        if implicit_check_not !== nothing
+            for pat in (implicit_check_not isa String ? [implicit_check_not] : implicit_check_not)
+                cmd = `$cmd --implicit-check-not=$pat`
+            end
+        end
+        if check_prefixes !== nothing
+            cmd = `$cmd --check-prefixes=$(join(check_prefixes, ","))`
+        end
+        if defines !== nothing
+            for (k, v) in defines
+                cmd = `$cmd -D$k=$v`
+            end
+        end
         proc = run(pipeline(ignorestatus(cmd); stdin=IOBuffer(output), stdout=filecheck_io, stderr=filecheck_io); wait=false)
         close(filecheck_io.in)
 
@@ -70,97 +103,92 @@ function filecheck(f, input)
     end
 end
 
+function parse_kwargs(args)
+    kwargs = Dict{Symbol,Any}()
+    for kwarg in args
+        if kwarg isa Symbol
+            kwargs[kwarg] = kwarg
+        elseif Meta.isexpr(kwarg, :(=))
+            kwargs[kwarg.args[1]] = kwarg.args[2]
+        else
+            throw(ArgumentError("Invalid keyword argument '$kwarg'"))
+        end
+    end
+    return kwargs
+end
+
 # collect checks used in the @filecheck block by piggybacking on macro expansion
-const checks = Tuple{Any,String}[]
-
-function _parse_check_args(args)
-    str = args[end]
-    kwargs = Dict{Symbol,Any}()
-    for kwarg in args[1:end-1]
-        if kwarg isa Symbol
-            kwargs[kwarg] = kwarg
-        elseif Meta.isexpr(kwarg, :(=))
-            kwargs[kwarg.args[1]] = kwarg.args[2]
-        else
-            throw(ArgumentError("Invalid keyword argument '$kwarg'"))
-        end
-    end
-    return kwargs, str
-end
-
-function _parse_check_count_args(args)
-    str = args[end]
-    n = args[end-1]
-    kwargs = Dict{Symbol,Any}()
-    for kwarg in args[1:end-2]
-        if kwarg isa Symbol
-            kwargs[kwarg] = kwarg
-        elseif Meta.isexpr(kwarg, :(=))
-            kwargs[kwarg.args[1]] = kwarg.args[2]
-        else
-            throw(ArgumentError("Invalid keyword argument '$kwarg'"))
-        end
-    end
-    return kwargs, n, str
-end
+const checks = Tuple{Any,Bool,String,String}[]
 
 macro check(args...)
-    kwargs, str = _parse_check_args(args)
+    kwargs = parse_kwargs(args[1:end-1])
     cond = get(kwargs, :cond, nothing)
-    push!(checks, (cond, "CHECK: $str"))
+    literal = get(kwargs, :literal, false)
+    push!(checks, (cond, literal, "CHECK", args[end]))
     nothing
 end
 
 macro check_label(args...)
-    kwargs, str = _parse_check_args(args)
+    kwargs = parse_kwargs(args[1:end-1])
     cond = get(kwargs, :cond, nothing)
-    push!(checks, (cond, "CHECK-LABEL: $str"))
+    literal = get(kwargs, :literal, false)
+    push!(checks, (cond, literal, "CHECK-LABEL", args[end]))
     nothing
 end
 
 macro check_next(args...)
-    kwargs, str = _parse_check_args(args)
+    kwargs = parse_kwargs(args[1:end-1])
     cond = get(kwargs, :cond, nothing)
-    push!(checks, (cond, "CHECK-NEXT: $str"))
+    literal = get(kwargs, :literal, false)
+    push!(checks, (cond, literal, "CHECK-NEXT", args[end]))
     nothing
 end
 
 macro check_same(args...)
-    kwargs, str = _parse_check_args(args)
+    kwargs = parse_kwargs(args[1:end-1])
     cond = get(kwargs, :cond, nothing)
-    push!(checks, (cond, "CHECK-SAME: $str"))
+    literal = get(kwargs, :literal, false)
+    push!(checks, (cond, literal, "CHECK-SAME", args[end]))
     nothing
 end
 
 macro check_not(args...)
-    kwargs, str = _parse_check_args(args)
+    kwargs = parse_kwargs(args[1:end-1])
     cond = get(kwargs, :cond, nothing)
-    push!(checks, (cond, "CHECK-NOT: $str"))
+    literal = get(kwargs, :literal, false)
+    push!(checks, (cond, literal, "CHECK-NOT", args[end]))
     nothing
 end
 
 macro check_dag(args...)
-    kwargs, str = _parse_check_args(args)
+    kwargs = parse_kwargs(args[1:end-1])
     cond = get(kwargs, :cond, nothing)
-    push!(checks, (cond, "CHECK-DAG: $str"))
+    literal = get(kwargs, :literal, false)
+    push!(checks, (cond, literal, "CHECK-DAG", args[end]))
     nothing
 end
 
 macro check_empty(args...)
-    kwargs, str = _parse_check_args(args)
+    kwargs = parse_kwargs(args[1:end-1])
     cond = get(kwargs, :cond, nothing)
-    push!(checks, (cond, "CHECK-EMPTY: $str"))
+    literal = get(kwargs, :literal, false)
+    push!(checks, (cond, literal, "CHECK-EMPTY", args[end]))
     nothing
 end
 
 macro check_count(args...)
-    kwargs, n, str = _parse_check_count_args(args)
+    kwargs = parse_kwargs(args[1:end-2])
     cond = get(kwargs, :cond, nothing)
-    push!(checks, (cond, "CHECK-COUNT-$n: $str"))
+    literal = get(kwargs, :literal, false)
+    push!(checks, (cond, literal, "CHECK-COUNT-$(args[end-1])", args[end]))
     nothing
 end
 
-macro filecheck(ex)
+macro filecheck(args...)
+    # Separate kwargs from the body expression
+    ex = args[end]
+    macro_kwargs = args[1:end-1]
+
     ex = Base.macroexpand(__module__, ex)
     if isempty(checks)
         error("No checks provided within the @filecheck macro block")
@@ -170,7 +198,9 @@ macro filecheck(ex)
 
     # Build runtime code to conditionally collect check lines
     stmts = Expr[:(local _checks = String[])]
-    for (cond, directive) in collected
+    for (cond, literal, name, pattern) in collected
+        literal_str = literal ? "{LITERAL}" : ""
+        directive = "$name$literal_str: $pattern"
         if cond === nothing
             push!(stmts, :(push!(_checks, $directive)))
         else
@@ -179,9 +209,13 @@ macro filecheck(ex)
     end
     push!(stmts, :(local _check_str = join(_checks, "\n")))
 
+    # Build kwargs to forward to filecheck()
+    fc_kwargs = parse_kwargs(macro_kwargs)
+    kw_exprs = [Expr(:kw, k, v) for (k, v) in fc_kwargs]
+
     esc(quote
         $(stmts...)
-        filecheck(_check_str) do _
+        filecheck(_check_str; $(kw_exprs...)) do _
             $ex
         end
     end)
