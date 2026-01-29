@@ -106,13 +106,13 @@ end
     end
 end
 
-@testset "failure throws" begin
-    @test_throws ErrorException @filecheck begin
+@testset "failure" begin
+    @test !@filecheck begin
         @check "missing pattern"
         "actual content"
     end
 
-    @test_throws ErrorException @filecheck begin
+    @test !@filecheck begin
         @check "first"
         @check_next "must be next"
         """
@@ -242,7 +242,7 @@ end
         "hello world"
     end
 
-    @test_throws ErrorException @filecheck match_full_lines=true begin
+    @test !@filecheck match_full_lines=true begin
         @check "hello"
         "hello world"
     end
@@ -304,7 +304,7 @@ end
         "hello world"
     end
 
-    @test_throws ErrorException @filecheck implicit_check_not="world" begin
+    @test !@filecheck implicit_check_not="world" begin
         @check "hello"
         "hello world"
     end

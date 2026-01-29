@@ -93,13 +93,9 @@ function filecheck(f, input;
         reader = Threads.@spawn String(read(filecheck_io))
         Base.wait(proc)
         log = strip(fetch(reader))
+        isempty(log) || println(stderr, log)
 
-        # error out if FileCheck did not succeed.
-        # otherwise, return true so that `@test @filecheck` works as expected.
-        if !success(proc)
-            error(log)
-        end
-        return true
+        return success(proc)
     end
 end
 
