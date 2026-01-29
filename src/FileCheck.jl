@@ -95,7 +95,9 @@ function filecheck(f, input;
         log = strip(fetch(reader))
         if !isempty(log)
             log = replace(log, path => "<checks>")
-            log = replace(log, "<stdin>" => "<output>")
+            log = replace(log, "<stdin>" => "<input>")
+            log = replace(log, r"^Input file: .*\nCheck file: .*\n\n"m => "")
+            log = replace(log, r"^-dump-input=help explains the following input dump\.\n?"m => "")
             println(stderr, log)
         end
 
