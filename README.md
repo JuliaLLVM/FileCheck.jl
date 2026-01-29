@@ -16,7 +16,7 @@ using Test, FileCheck
 end
 ```
 
-The last expression in the block is the input to verify (stringified if necessary). Check directives specify patterns that must appear in the input.
+The block's stdout and stderr are captured and verified against the check directives. If the last expression returns a non-`nothing` value, it is stringified and appended to the captured output.
 
 
 ## Check Directives
