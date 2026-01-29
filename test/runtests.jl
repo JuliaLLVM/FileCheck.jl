@@ -107,12 +107,12 @@ end
 end
 
 @testset "failure" begin
-    @test !@filecheck begin
+    @test !@test_warn "CHECK: expected string not found" @filecheck begin
         @check "missing pattern"
         "actual content"
     end
 
-    @test !@filecheck begin
+    @test !@test_warn "CHECK-NEXT: is not on the line after the previous match" @filecheck begin
         @check "first"
         @check_next "must be next"
         """
@@ -242,7 +242,7 @@ end
         "hello world"
     end
 
-    @test !@filecheck match_full_lines=true begin
+    @test !@test_warn "CHECK: expected string not found" @filecheck match_full_lines=true begin
         @check "hello"
         "hello world"
     end
@@ -304,7 +304,7 @@ end
         "hello world"
     end
 
-    @test !@filecheck implicit_check_not="world" begin
+    @test !@test_warn "IMPLICIT-CHECK-NOT: excluded string found" @filecheck implicit_check_not="world" begin
         @check "hello"
         "hello world"
     end
