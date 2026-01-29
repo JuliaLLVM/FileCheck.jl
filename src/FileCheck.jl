@@ -93,7 +93,11 @@ function filecheck(f, input;
         reader = Threads.@spawn String(read(filecheck_io))
         Base.wait(proc)
         log = strip(fetch(reader))
-        isempty(log) || println(stderr, log)
+        if !isempty(log)
+            log = replace(log, path => "<checks>")
+            log = replace(log, "<stdin>" => "<output>")
+            println(stderr, log)
+        end
 
         return success(proc)
     end
