@@ -2,9 +2,9 @@ module FileCheck
 
 import LLVM_jll
 
-export filecheck, @filecheck
-export @check, @check_label, @check_next, @check_same
-export @check_not, @check_dag, @check_empty, @check_count
+export @filecheck
+export @check, @check_label, @check_next, @check_same,
+       @check_not, @check_dag, @check_empty, @check_count
 
 global filecheck_path::String
 function __init__()
@@ -184,6 +184,70 @@ macro check_count(args...)
     nothing
 end
 
+"""
+    @filecheck [kwargs...] ex
+
+Run the expression `ex`, capture its stdout/stderr and return value, and verify the
+combined output against LLVM FileCheck directives specified via nested `@check*` macros.
+Returns `true` if all checks pass, or `false` on failure (with diagnostic output printed
+to stderr).
+
+# Check macros
+
+Use these macros inside the `@filecheck` block to specify directives:
+
+- `@check "pattern"` — Match `pattern` anywhere after the previous match.
+- `@check_next "pattern"` — Match `pattern` on the line immediately following the previous match.
+- `@check_same "pattern"` — Match `pattern` on the same line as the previous match.
+- `@check_label "pattern"` — Like `@check`, but resets the match context, useful for dividing checks into independent sections.
+- `@check_not "pattern"` — Verify that `pattern` does *not* appear between the surrounding matches.
+- `@check_dag "pattern"` — Match `pattern` in any order relative to other `@check_dag` directives.
+- `@check_empty "pattern"` — Verify that the next line is empty.
+- `@check_count n "pattern"` — Match `pattern` exactly `n` times.
+
+Each check macro also accepts these keyword arguments:
+
+- `literal=true`: Insert the `{LITERAL}` modifier, disabling regex matching.
+- `cond=expr`: Only include this check directive when `expr` evaluates to `true` at runtime.
+
+# Keyword arguments
+
+These are forwarded to LLVM's FileCheck as CLI flags:
+
+- `match_full_lines::Bool`: Require matches to span entire lines (`--match-full-lines`).
+- `strict_whitespace::Bool`: Disable default whitespace canonicalization (`--strict-whitespace`).
+- `ignore_case::Bool`: Case-insensitive matching (`--ignore-case`).
+- `implicit_check_not::Union{String,Vector{String}}`: Fail if the given pattern(s) appear
+  anywhere in the input (`--implicit-check-not`).
+- `enable_var_scope::Bool`: Enable scoping for FileCheck variables (`--enable-var-scope`).
+- `dump_input::String`: Control input dump on failure, e.g. `"always"` or `"fail"` (`--dump-input`).
+- `verbose::Bool`: Show successful match details (`-v`).
+- `very_verbose::Bool`: Show all match attempts (`-vv`).
+- `check_prefixes::Vector{String}`: Use custom check prefixes (`--check-prefixes`).
+- `defines::Dict{String,String}`: Define FileCheck variables (`-Dkey=value`).
+- `allow_empty::Bool`: Allow empty check files (`--allow-empty`).
+
+# Examples
+
+```julia
+using Test
+
+@test @filecheck begin
+    @check "hello"
+    print("hello world")
+end
+
+@test @filecheck match_full_lines=true begin
+    @check "hello world"
+    print("hello world")
+end
+
+@test @filecheck begin
+    @check literal=true "foo {{bar}}"
+    print("foo {{bar}}")
+end
+```
+"""
 macro filecheck(args...)
     # Separate kwargs from the body expression
     ex = args[end]
@@ -215,7 +279,7 @@ macro filecheck(args...)
 
     esc(quote
         $(stmts...)
-        filecheck(_check_str; $(kw_exprs...)) do _
+        $filecheck(_check_str; $(kw_exprs...)) do _
             $ex
         end
     end)
