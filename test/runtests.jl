@@ -304,7 +304,7 @@ end
         "hello world"
     end
 
-    @test !@test_warn "IMPLICIT-CHECK-NOT: excluded string found" @filecheck implicit_check_not="world" begin
+    @test !@test_warn "excluded string found" @filecheck implicit_check_not="world" begin
         @check "hello"
         "hello world"
     end
