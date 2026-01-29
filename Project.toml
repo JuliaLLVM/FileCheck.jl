@@ -5,3 +5,7 @@ version = "0.1.0"
 
 [deps]
 LLVM_jll = "86de99a1-58d6-5da7-8064-bd56ce2e322c"
+
+[compat]
+julia = "1.10"
+LLVM_jll = "15,16,18,20"
