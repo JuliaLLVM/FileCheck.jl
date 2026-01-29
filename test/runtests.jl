@@ -162,4 +162,78 @@ end
     end
 end
 
+@testset "conditional checks" begin
+    # cond=true: check is included
+    @test @filecheck begin
+        @check cond=true "hello"
+        "hello world"
+    end
+
+    # cond=false: check is skipped, so no checks cause failure
+    @test @filecheck begin
+        @check "hello"
+        @check cond=false "missing pattern"
+        "hello world"
+    end
+
+    # cond with version comparison (always true)
+    @test @filecheck begin
+        @check cond=(VERSION >= v"0.0") "hello"
+        "hello world"
+    end
+
+    # cond=false on @check_not: the NOT check is skipped entirely
+    @test @filecheck begin
+        @check "hello"
+        @check_not cond=false "hello"
+        "hello world"
+    end
+
+    # cond=false on @check_next: skipped, so non-adjacent line doesn't fail
+    @test @filecheck begin
+        @check "first"
+        @check_next cond=false "second"
+        """
+        first line
+        gap
+        third line
+        """
+    end
+
+    # cond=false on @check_label: skipped
+    @test @filecheck begin
+        @check "body"
+        @check_label cond=false "nonexistent label"
+        "body here"
+    end
+
+    # cond=false on @check_same: skipped
+    @test @filecheck begin
+        @check "key"
+        @check_same cond=false "nonexistent"
+        "key = value"
+    end
+
+    # cond=false on @check_dag: skipped
+    @test @filecheck begin
+        @check "hello"
+        @check_dag cond=false "nonexistent"
+        "hello world"
+    end
+
+    # cond=false on @check_empty: skipped
+    @test @filecheck begin
+        @check "hello"
+        @check_empty cond=false "nonexistent"
+        "hello world"
+    end
+
+    # cond=false on @check_count: skipped
+    @test @filecheck begin
+        @check "hello"
+        @check_count cond=false 5 "hello"
+        "hello world"
+    end
+end
+
 end  # @testset "FileCheck"

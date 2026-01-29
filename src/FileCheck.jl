@@ -50,19 +50,9 @@ function filecheck(f, input)
         close(pipe.in)
         output = fetch(reader)
 
-        # determine some useful prefixes for FileCheck
-        prefixes = ["CHECK",
-                    "JULIA$(VERSION.major)_$(VERSION.minor)",
-                    "LLVM$(Base.libllvm_version.major)"]
-        # TODO: add CUDA version prefix and target architecture?
-
         # now pass the collected output to FileCheck
         filecheck_io = Pipe()
-        cmd = ```$(filecheck_exe())
-                 --color
-                 --allow-unused-prefixes
-                 --check-prefixes $(join(prefixes, ','))
-                 $path```
+        cmd = `$(filecheck_exe()) --color $path`
         proc = run(pipeline(ignorestatus(cmd); stdin=IOBuffer(output), stdout=filecheck_io, stderr=filecheck_io); wait=false)
         close(filecheck_io.in)
 
@@ -81,45 +71,92 @@ function filecheck(f, input)
 end
 
 # collect checks used in the @filecheck block by piggybacking on macro expansion
-const checks = String[]
+const checks = Tuple{Any,String}[]
 
-macro check(str)
-    push!(checks, "CHECK: $str")
+function _parse_check_args(args)
+    str = args[end]
+    kwargs = Dict{Symbol,Any}()
+    for kwarg in args[1:end-1]
+        if kwarg isa Symbol
+            kwargs[kwarg] = kwarg
+        elseif Meta.isexpr(kwarg, :(=))
+            kwargs[kwarg.args[1]] = kwarg.args[2]
+        else
+            throw(ArgumentError("Invalid keyword argument '$kwarg'"))
+        end
+    end
+    return kwargs, str
+end
+
+function _parse_check_count_args(args)
+    str = args[end]
+    n = args[end-1]
+    kwargs = Dict{Symbol,Any}()
+    for kwarg in args[1:end-2]
+        if kwarg isa Symbol
+            kwargs[kwarg] = kwarg
+        elseif Meta.isexpr(kwarg, :(=))
+            kwargs[kwarg.args[1]] = kwarg.args[2]
+        else
+            throw(ArgumentError("Invalid keyword argument '$kwarg'"))
+        end
+    end
+    return kwargs, n, str
+end
+
+macro check(args...)
+    kwargs, str = _parse_check_args(args)
+    cond = get(kwargs, :cond, nothing)
+    push!(checks, (cond, "CHECK: $str"))
     nothing
 end
 
-macro check_label(str)
-    push!(checks, "CHECK-LABEL: $str")
+macro check_label(args...)
+    kwargs, str = _parse_check_args(args)
+    cond = get(kwargs, :cond, nothing)
+    push!(checks, (cond, "CHECK-LABEL: $str"))
     nothing
 end
 
-macro check_next(str)
-    push!(checks, "CHECK-NEXT: $str")
+macro check_next(args...)
+    kwargs, str = _parse_check_args(args)
+    cond = get(kwargs, :cond, nothing)
+    push!(checks, (cond, "CHECK-NEXT: $str"))
     nothing
 end
 
-macro check_same(str)
-    push!(checks, "CHECK-SAME: $str")
+macro check_same(args...)
+    kwargs, str = _parse_check_args(args)
+    cond = get(kwargs, :cond, nothing)
+    push!(checks, (cond, "CHECK-SAME: $str"))
     nothing
 end
 
-macro check_not(str)
-    push!(checks, "CHECK-NOT: $str")
+macro check_not(args...)
+    kwargs, str = _parse_check_args(args)
+    cond = get(kwargs, :cond, nothing)
+    push!(checks, (cond, "CHECK-NOT: $str"))
     nothing
 end
 
-macro check_dag(str)
-    push!(checks, "CHECK-DAG: $str")
+macro check_dag(args...)
+    kwargs, str = _parse_check_args(args)
+    cond = get(kwargs, :cond, nothing)
+    push!(checks, (cond, "CHECK-DAG: $str"))
     nothing
 end
 
-macro check_empty(str)
-    push!(checks, "CHECK-EMPTY: $str")
+macro check_empty(args...)
+    kwargs, str = _parse_check_args(args)
+    cond = get(kwargs, :cond, nothing)
+    push!(checks, (cond, "CHECK-EMPTY: $str"))
     nothing
 end
 
-macro check_count(n, str)
-    push!(checks, "CHECK-COUNT-$n: $str")
+macro check_count(args...)
+    kwargs, n, str = _parse_check_count_args(args)
+    cond = get(kwargs, :cond, nothing)
+    push!(checks, (cond, "CHECK-COUNT-$n: $str"))
     nothing
 end
 
@@ -128,11 +165,23 @@ macro filecheck(ex)
     if isempty(checks)
         error("No checks provided within the @filecheck macro block")
     end
-    check_str = join(checks, "\n")
+    collected = copy(checks)
     empty!(checks)
 
+    # Build runtime code to conditionally collect check lines
+    stmts = Expr[:(local _checks = String[])]
+    for (cond, directive) in collected
+        if cond === nothing
+            push!(stmts, :(push!(_checks, $directive)))
+        else
+            push!(stmts, :(if $(cond); push!(_checks, $directive); end))
+        end
+    end
+    push!(stmts, :(local _check_str = join(_checks, "\n")))
+
     esc(quote
-        filecheck($check_str) do _
+        $(stmts...)
+        filecheck(_check_str) do _
             $ex
         end
     end)
