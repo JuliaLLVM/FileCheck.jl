@@ -120,7 +120,7 @@ function parse_kwargs(args)
 end
 
 # collect checks used in the @filecheck block by piggybacking on macro expansion
-const checks = Tuple{Any,Bool,String,String}[]
+const checks = Tuple{Any,Bool,String,Any}[]
 
 macro check(args...)
     kwargs = parse_kwargs(args[1:end-1])
@@ -266,11 +266,11 @@ macro filecheck(args...)
     stmts = Expr[:(local _checks = String[])]
     for (cond, literal, name, pattern) in collected
         literal_str = literal ? "{LITERAL}" : ""
-        directive = "$name$literal_str: $pattern"
+        prefix = "$name$literal_str: "
         if cond === nothing
-            push!(stmts, :(push!(_checks, $directive)))
+            push!(stmts, :(push!(_checks, $prefix * $(pattern))))
         else
-            push!(stmts, :(if $(cond); push!(_checks, $directive); end))
+            push!(stmts, :(if $(cond); push!(_checks, $prefix * $(pattern)); end))
         end
     end
     push!(stmts, :(local _check_str = join(_checks, "\n")))

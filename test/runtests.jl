@@ -332,4 +332,12 @@ end
     end
 end
 
+@testset "interpolation" begin
+    foo = 42
+    @test @filecheck begin
+        @check "foo = $foo"
+        println("foo = 42")
+    end
+end
+
 end  # @testset "FileCheck"
