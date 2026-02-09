@@ -162,6 +162,47 @@ end
     end
 end
 
+@testset "throws" begin
+    # Basic: catch expected exception, verify error message
+    @test @filecheck throws=ErrorException begin
+        @check "ERROR: TestError"
+        error("TestError")
+    end
+
+    # Verify backtrace is included
+    @test @filecheck throws=ErrorException begin
+        @check "ERROR: TestError"
+        @check "Stacktrace:"
+        error("TestError")
+    end
+
+    # ArgumentError type
+    @test @filecheck throws=ArgumentError begin
+        @check "ArgumentError: bad arg"
+        throw(ArgumentError("bad arg"))
+    end
+
+    # Output before exception is also captured
+    @test @filecheck throws=ErrorException begin
+        @check "before"
+        @check "ERROR: boom"
+        println("before")
+        error("boom")
+    end
+
+    # No exception thrown when expected → error
+    @test_throws "no exception was thrown" @filecheck throws=ErrorException begin
+        @check "hello"
+        "hello"
+    end
+
+    # Wrong exception type → rethrown
+    @test_throws ArgumentError @filecheck throws=ErrorException begin
+        @check "hello"
+        throw(ArgumentError("wrong type"))
+    end
+end
+
 @testset "conditional checks" begin
     # cond=true: check is included
     @test @filecheck begin
