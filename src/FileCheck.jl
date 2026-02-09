@@ -25,6 +25,7 @@ function filecheck_exe(; adjust_PATH::Bool=true, adjust_LIBPATH::Bool=true)
 end
 
 function filecheck(f, input;
+    throws::Union{Nothing, Type{<:Exception}}=nothing,
     match_full_lines::Bool=false,
     strict_whitespace::Bool=false,
     ignore_case::Bool=false,
@@ -50,14 +51,33 @@ function filecheck(f, input;
             read(pipe, String)
         end
         result = nothing
+        thrown = false
         io = IOContext(pipe)
-        stats = redirect_stdio(; stdout=io, stderr=io) do
+        redirect_stdio(; stdout=io, stderr=io) do
             put!(pipe_initialized, nothing)
-            result = f(input)
+            if throws !== nothing
+                try
+                    result = f(input)
+                catch e
+                    e isa throws || rethrow()
+                    thrown = true
+                    Base.display_error(io, e, catch_backtrace())
+                end
+            else
+                result = f(input)
+            end
         end
-        if result !== nothing
-          println(io)
-          print(io, result)
+        if throws !== nothing
+            if !thrown
+                close(pipe.in)
+                fetch(reader)
+                error("Expected $throws to be thrown, but no exception was thrown")
+            end
+        else
+            if result !== nothing
+                println(io)
+                print(io, result)
+            end
         end
         close(pipe.in)
         output = fetch(reader)
@@ -228,6 +248,10 @@ These are forwarded to LLVM's FileCheck as CLI flags:
 - `check_prefixes::Vector{String}`: Use custom check prefixes (`--check-prefixes`).
 - `defines::Dict{String,String}`: Define FileCheck variables (`-Dkey=value`).
 - `allow_empty::Bool`: Allow empty check files (`--allow-empty`).
+- `throws::Type{<:Exception}`: Expect the expression to throw an exception of this type.
+  The error and backtrace are printed in standard Julia format and can be verified with
+  `@check*` directives. Raises an error if no exception is thrown; re-throws if the wrong
+  type is caught.
 
 # Examples
 
@@ -247,6 +271,11 @@ end
 @test @filecheck begin
     @check literal=true "foo {{bar}}"
     print("foo {{bar}}")
+end
+
+@test @filecheck throws=ArgumentError begin
+    @check "ArgumentError: bad"
+    throw(ArgumentError("bad"))
 end
 ```
 """
