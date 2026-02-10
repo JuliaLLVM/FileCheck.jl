@@ -381,4 +381,19 @@ end
     end
 end
 
+@testset "@check outside @filecheck errors" begin
+    @test_throws ErrorException @macroexpand @check "hello"
+    @test_throws ErrorException @macroexpand @check_next "hello"
+    @test_throws ErrorException @macroexpand @check_count 3 "hello"
+end
+
+@testset "@check does not emit values" begin
+    # @check used to expand to nothing, interferring with returned values and other macros
+    @test @filecheck begin
+        42
+        @check "42"
+        @check_not "error"
+    end
+end
+
 end  # @testset "FileCheck"
