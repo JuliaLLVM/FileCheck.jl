@@ -159,22 +159,25 @@ for (macro_sym, _) in CHECK_MACROS
 end
 
 # Walk the AST recursively, collecting @check* macrocall nodes and removing them from blocks.
+# For blocks, we process args left-to-right: collect a @check* or recurse into the child.
+# This preserves source order even when checks appear at multiple nesting levels.
 function extract_checks!(ex, collected::Vector{Tuple{Any,Bool,String,Any}})
     ex isa Expr || return ex
 
-    # Recurse into sub-expressions first (depth-first to collect in source order)
-    for i in eachindex(ex.args)
-        ex.args[i] = extract_checks!(ex.args[i], collected)
-    end
-
-    # Strip @check* calls from blocks
     if Meta.isexpr(ex, :block)
-        filter!(ex.args) do arg
+        kept = Any[]
+        for arg in ex.args
             if Meta.isexpr(arg, :macrocall) && haskey(CHECK_MACROS, arg.args[1])
                 collect_check!(arg, collected)
-                return false
+            else
+                push!(kept, extract_checks!(arg, collected))
             end
-            true
+        end
+        empty!(ex.args)
+        append!(ex.args, kept)
+    else
+        for i in eachindex(ex.args)
+            ex.args[i] = extract_checks!(ex.args[i], collected)
         end
     end
     return ex

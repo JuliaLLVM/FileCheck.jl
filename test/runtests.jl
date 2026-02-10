@@ -396,4 +396,19 @@ end
     end
 end
 
+@testset "source order with nested checks" begin
+    # checks at different nesting levels must be collected in source order,
+    # not depth-first (which would put the nested "second" before "first")
+    @test @filecheck begin
+        @check "first"
+        println("first")
+        if true
+            @check "second"
+            println("second")
+        end
+        @check "third"
+        println("third")
+    end
+end
+
 end  # @testset "FileCheck"
