@@ -3,8 +3,6 @@ module FileCheck
 import LLVM_jll
 
 export @filecheck
-export @check, @check_label, @check_next, @check_same,
-       @check_not, @check_dag, @check_empty, @check_count
 
 global filecheck_path::String
 function __init__()
@@ -139,71 +137,67 @@ function parse_kwargs(args)
     return kwargs
 end
 
-# collect checks used in the @filecheck block by piggybacking on macro expansion
-const checks = Tuple{Any,Bool,String,Any}[]
-
-macro check(args...)
-    kwargs = parse_kwargs(args[1:end-1])
-    cond = get(kwargs, :cond, nothing)
-    literal = get(kwargs, :literal, false)
-    push!(checks, (cond, literal, "CHECK", args[end]))
-    nothing
+# Generate @check* macros that can only be used inside @filecheck blocks
+const CHECK_MACROS = Dict{Symbol,String}(
+    Symbol("@check")       => "CHECK",
+    Symbol("@check_label") => "CHECK-LABEL",
+    Symbol("@check_next")  => "CHECK-NEXT",
+    Symbol("@check_same")  => "CHECK-SAME",
+    Symbol("@check_not")   => "CHECK-NOT",
+    Symbol("@check_dag")   => "CHECK-DAG",
+    Symbol("@check_empty") => "CHECK-EMPTY",
+    Symbol("@check_count") => "CHECK-COUNT",
+)
+for (macro_sym, _) in CHECK_MACROS
+    name = Symbol(string(macro_sym)[2:end])  # strip leading @
+    @eval begin
+        export $(Symbol("@", name))
+        macro $name(args...)
+            error($(string("@", name, " can only be used inside a @filecheck block")))
+        end
+    end
 end
 
-macro check_label(args...)
-    kwargs = parse_kwargs(args[1:end-1])
-    cond = get(kwargs, :cond, nothing)
-    literal = get(kwargs, :literal, false)
-    push!(checks, (cond, literal, "CHECK-LABEL", args[end]))
-    nothing
+# Walk the AST recursively, collecting @check* macrocall nodes and removing them from blocks.
+function extract_checks!(ex, collected::Vector{Tuple{Any,Bool,String,Any}})
+    ex isa Expr || return ex
+
+    # Recurse into sub-expressions first (depth-first to collect in source order)
+    for i in eachindex(ex.args)
+        ex.args[i] = extract_checks!(ex.args[i], collected)
+    end
+
+    # Strip @check* calls from blocks
+    if Meta.isexpr(ex, :block)
+        filter!(ex.args) do arg
+            if Meta.isexpr(arg, :macrocall) && haskey(CHECK_MACROS, arg.args[1])
+                collect_check!(arg, collected)
+                return false
+            end
+            true
+        end
+    end
+    return ex
 end
 
-macro check_next(args...)
-    kwargs = parse_kwargs(args[1:end-1])
-    cond = get(kwargs, :cond, nothing)
-    literal = get(kwargs, :literal, false)
-    push!(checks, (cond, literal, "CHECK-NEXT", args[end]))
-    nothing
-end
-
-macro check_same(args...)
-    kwargs = parse_kwargs(args[1:end-1])
-    cond = get(kwargs, :cond, nothing)
-    literal = get(kwargs, :literal, false)
-    push!(checks, (cond, literal, "CHECK-SAME", args[end]))
-    nothing
-end
-
-macro check_not(args...)
-    kwargs = parse_kwargs(args[1:end-1])
-    cond = get(kwargs, :cond, nothing)
-    literal = get(kwargs, :literal, false)
-    push!(checks, (cond, literal, "CHECK-NOT", args[end]))
-    nothing
-end
-
-macro check_dag(args...)
-    kwargs = parse_kwargs(args[1:end-1])
-    cond = get(kwargs, :cond, nothing)
-    literal = get(kwargs, :literal, false)
-    push!(checks, (cond, literal, "CHECK-DAG", args[end]))
-    nothing
-end
-
-macro check_empty(args...)
-    kwargs = parse_kwargs(args[1:end-1])
-    cond = get(kwargs, :cond, nothing)
-    literal = get(kwargs, :literal, false)
-    push!(checks, (cond, literal, "CHECK-EMPTY", args[end]))
-    nothing
-end
-
-macro check_count(args...)
-    kwargs = parse_kwargs(args[1:end-2])
-    cond = get(kwargs, :cond, nothing)
-    literal = get(kwargs, :literal, false)
-    push!(checks, (cond, literal, "CHECK-COUNT-$(args[end-1])", args[end]))
-    nothing
+# Extract a single check directive from a raw :macrocall AST node.
+# Raw AST args: [macro_sym, LineNumberNode, real_args...]
+function collect_check!(ex, collected)
+    macro_sym = ex.args[1]::Symbol
+    check_type = CHECK_MACROS[macro_sym]
+    # Skip macro name and LineNumberNodes
+    real_args = [a for a in ex.args[2:end] if !(a isa LineNumberNode)]
+    if macro_sym === Symbol("@check_count")
+        kwargs = parse_kwargs(real_args[1:end-2])
+        cond = get(kwargs, :cond, nothing)
+        literal = get(kwargs, :literal, false)
+        push!(collected, (cond, literal, "CHECK-COUNT-$(real_args[end-1])", real_args[end]))
+    else
+        kwargs = parse_kwargs(real_args[1:end-1])
+        cond = get(kwargs, :cond, nothing)
+        literal = get(kwargs, :literal, false)
+        push!(collected, (cond, literal, check_type, real_args[end]))
+    end
 end
 
 """
@@ -284,12 +278,12 @@ macro filecheck(args...)
     ex = args[end]
     macro_kwargs = args[1:end-1]
 
-    ex = Base.macroexpand(__module__, ex)
-    if isempty(checks)
+    collected = Tuple{Any,Bool,String,Any}[]
+    ex = extract_checks!(ex, collected)
+    if isempty(collected)
         error("No checks provided within the @filecheck macro block")
     end
-    collected = copy(checks)
-    empty!(checks)
+    ex = Base.macroexpand(__module__, ex)
 
     # Build runtime code to conditionally collect check lines
     stmts = Expr[:(local _checks = String[])]
