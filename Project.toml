@@ -1,6 +1,6 @@
 name = "FileCheck"
 uuid = "4e644321-382b-4b05-b0b6-5d23c3d944fb"
-version = "1.1.2"
+version = "1.2.0"
 authors = ["Tim Besard <tim.besard@gmail.com>"]
 
 [deps]
