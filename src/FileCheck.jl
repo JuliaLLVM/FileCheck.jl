@@ -1,26 +1,8 @@
 module FileCheck
 
-import LLVM_jll
+import LLVM_utils_unified_jll
 
 export @filecheck
-
-global filecheck_path::String
-function __init__()
-    global filecheck_path = joinpath(LLVM_jll.artifact_dir, "tools", "FileCheck")
-end
-
-function filecheck_exe(; adjust_PATH::Bool=true, adjust_LIBPATH::Bool=true)
-    env = Base.invokelatest(
-        LLVM_jll.JLLWrappers.adjust_ENV!,
-        copy(ENV),
-        LLVM_jll.PATH[],
-        LLVM_jll.LIBPATH[],
-        adjust_PATH,
-        adjust_LIBPATH
-    )
-
-    return Cmd(Cmd([filecheck_path]); env)
-end
 
 function filecheck(f, input;
     throws::Union{Nothing, Type{<:Exception}}=nothing,
@@ -82,7 +64,7 @@ function filecheck(f, input;
 
         # now pass the collected output to FileCheck
         filecheck_io = Pipe()
-        cmd = `$(filecheck_exe()) --color $path`
+        cmd = `$(LLVM_utils_unified_jll.llvm_FileCheck()) --color $path`
         match_full_lines && (cmd = `$cmd --match-full-lines`)
         strict_whitespace && (cmd = `$cmd --strict-whitespace`)
         ignore_case && (cmd = `$cmd --ignore-case`)

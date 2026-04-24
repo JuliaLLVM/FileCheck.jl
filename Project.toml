@@ -1,11 +1,11 @@
 name = "FileCheck"
 uuid = "4e644321-382b-4b05-b0b6-5d23c3d944fb"
-authors = ["Tim Besard <tim.besard@gmail.com>"]
 version = "1.1.2"
+authors = ["Tim Besard <tim.besard@gmail.com>"]
 
 [deps]
-LLVM_jll = "86de99a1-58d6-5da7-8064-bd56ce2e322c"
+LLVM_utils_unified_jll = "0def2053-1a45-54bc-bfc1-6427e7aae702"
 
 [compat]
+LLVM_utils_unified_jll = "0.1.0"
 julia = "1.10"
-LLVM_jll = "15,16,18,20"
